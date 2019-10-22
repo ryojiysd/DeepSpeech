@@ -36,9 +36,9 @@ def sparse_tuple_to_texts(sp_tuple, alphabet):
     values = sp_tuple[1]
     results = [''] * sp_tuple[2][0]
     for i, index in enumerate(indices):
-        results[index[0]] += alphabet.string_from_label(values[i])
+        results[index[0]] += values[i]
     # List of strings
-    return results
+    return [alphabet.decode(res) for res in results]
 
 
 def evaluate(test_csvs, create_model, try_loading):
