@@ -18,6 +18,7 @@ struct ModelState {
   Alphabet alphabet_;
   std::shared_ptr<Scorer> scorer_;
   unsigned int beam_width_;
+  unsigned int batch_size_ = BATCH_SIZE;
   unsigned int n_steps_;
   unsigned int n_context_;
   unsigned int n_features_;
