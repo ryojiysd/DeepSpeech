@@ -214,7 +214,10 @@ TFModelState::infer(const std::vector<float>& mfcc,
   Tensor previous_state_c_t = tensor_from_vector(previous_state_c, TensorShape({batch_size_, (long long)state_size_}));
   Tensor previous_state_h_t = tensor_from_vector(previous_state_h, TensorShape({batch_size_, (long long)state_size_}));
   Tensor input_lengths(DT_INT32, TensorShape({batch_size_}));
-  input_lengths.scalar<int>()() = n_frames;
+  auto input_lengths_mapped = input_lengths.flat<int>();
+  for (int i = 0; i < batch_size_; ++i) {
+    input_lengths_mapped(i) = n_frames;  // TODO
+  }
 
   vector<Tensor> outputs;
   Status status = session_->Run(
@@ -236,11 +239,11 @@ TFModelState::infer(const std::vector<float>& mfcc,
   copy_tensor_to_vector(outputs[0], logits_output, n_frames * batch_size_ * num_classes);
 
   state_c_output.clear();
-  state_c_output.reserve(state_size_);
+  state_c_output.reserve(batch_size_ * state_size_);
   copy_tensor_to_vector(outputs[1], state_c_output);
 
   state_h_output.clear();
-  state_h_output.reserve(state_size_);
+  state_h_output.reserve(batch_size_ * state_size_);
   copy_tensor_to_vector(outputs[2], state_h_output);
 }
 

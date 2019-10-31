@@ -254,8 +254,20 @@ StreamingState::processBatch(const vector<float>& buf, unsigned int n_steps)
   const size_t num_classes = model_->alphabet_.GetSize() + 1; // +1 for blank
   const int n_frames = logits.size() / (model_->batch_size_ * num_classes);
 
+
+  // logits.resize(n_frames * num_classes);  // TODO
+  vector<double> inputs(n_frames * num_classes);
+  for (int i = 0; i < 1; i++) {
+    // for (int j = 0; j < model_->batch_size_; j++) {
+    for (int j = 0; j < n_frames; j++) {
+      for (int k = 0; k < num_classes; k++) {
+        inputs[k + j * num_classes] = logits[num_classes * model_->batch_size_ * j + num_classes * i + k];
+      }
+    }
+  }
+
   // Convert logits to double
-  vector<double> inputs(logits.begin(), logits.end());
+  // vector<double> inputs(logits.begin(), logits.end());
 
   decoder_state_.next(inputs.data(),
                       n_frames,
@@ -384,7 +396,7 @@ DS_CreateStream(ModelState* aCtx,
   ctx->model_ = aCtx;
 
   const int cutoff_top_n = 40;
-  const double cutoff_prob = 1.0;
+  const double cutoff_prob = 0.99;
 
   ctx->decoder_state_.init(aCtx->alphabet_,
                            aCtx->beam_width_,
@@ -455,6 +467,116 @@ DS_SpeechToText(ModelState* aCtx,
 {
   StreamingState* ctx = CreateStreamAndFeedAudioContent(aCtx, aBuffer, aBufferSize);
   return DS_FinishStream(ctx);
+}
+
+int ExtractMfcc(ModelState* aCtx, const short* aBuffer, unsigned int aBufferSize, vector<float>& mfccBuffer)
+{
+  mfccBuffer.reserve(aCtx->n_features_ * (aBufferSize / aCtx->audio_win_step_) + 1);
+  vector<float> audio_buffer;
+  audio_buffer.reserve(aCtx->audio_win_len_);
+  while (aBufferSize > 0) {
+    while (aBufferSize > 0 && audio_buffer.size() < aCtx->audio_win_len_) {
+      // Convert i16 sample into f32
+      float multiplier = 1.0f / (1 << 15);
+      audio_buffer.push_back((float)(*aBuffer) * multiplier);
+      ++aBuffer;
+      --aBufferSize;
+    }
+
+    if (audio_buffer.size() == aCtx->audio_win_len_) {
+      // processAudioWindow
+      std::vector<float> mfcc;
+      aCtx->compute_mfcc(audio_buffer, mfcc);
+      std::copy(mfcc.begin(), mfcc.end(), std::back_inserter(mfccBuffer));
+      // Shift data by one step
+      shift_buffer_left(audio_buffer, aCtx->audio_win_step_);
+    }
+  }
+  // finalize stream
+  for (int j = 0; j < aCtx->n_context_; ++j) {
+    vector<float> zero_buffer(aCtx->n_features_, 0.f);
+    std::copy(zero_buffer.begin(), zero_buffer.end(), std::back_inserter(mfccBuffer));
+  }
+  return 0;
+}
+
+char* DS_SpeechToTextBatch(ModelState* aCtx, const short** buffers, const unsigned int* bufferSizes, const unsigned int batch_size, unsigned int aSampleRate)
+{
+  // extract all MfCC
+  vector<vector<float>> mfccs(batch_size);
+  size_t maxMfccSize = 0;
+  for (int i = 0; i < batch_size; i++) {
+    unsigned int aBufferSize = *(bufferSizes + i);
+    const short* aBuffer = *(buffers + i);
+    ExtractMfcc(aCtx, aBuffer, aBufferSize, mfccs[i]);
+    maxMfccSize = std::max(maxMfccSize, mfccs[i].size());
+  }
+
+  // align mfcc size
+  for (int i = 0; i < batch_size; i++) {
+    mfccs[i].resize(maxMfccSize, 0);
+  }
+
+  //
+  vector<DecoderState> decoders(batch_size);
+  const int cutoff_top_n = 40;
+  const double cutoff_prob = 0.99;
+  for (int i = 0; i < batch_size; i++) {
+    decoders[i].init(aCtx->alphabet_, aCtx->beam_width_, cutoff_prob, cutoff_top_n, aCtx->scorer_.get());
+  }
+
+  const size_t num_classes = aCtx->alphabet_.GetSize() + 1;  // +1 for blank
+  size_t start = 0;
+  vector<float> mfcc_buffer;
+  vector<float> batch_buffer;
+  vector<float> previous_state_c(aCtx->state_size_ * batch_size, 0.f);
+  vector<float> previous_state_h(aCtx->state_size_ * batch_size, 0.f);
+
+  while (start + aCtx->mfcc_feats_per_timestep_ < mfccs[0].size()) {
+    unsigned int steps = std::min(aCtx->n_steps_, unsigned int(mfccs[0].size() - start) / 26);
+    batch_buffer.clear();
+    batch_buffer.reserve(batch_size * steps * aCtx->mfcc_feats_per_timestep_);
+
+    for (int i = 0; i < batch_size; i++) {
+      int offset = 0;
+      for (int j = 0; j < steps; j++) {
+        // copy_up_to_n(mfccs[i].begin(), mfccs[i].end(), std::back_inserter(batch_buffer), aCtx->mfcc_feats_per_timestep_);
+        for (int j = 0; j < aCtx->mfcc_feats_per_timestep_; j++) {
+          batch_buffer.push_back(mfccs[i][j+start+offset]);
+        }
+        offset += 26;
+      }
+    }
+
+    vector<float> logits;
+
+    aCtx->infer(batch_buffer, steps,
+                previous_state_c, previous_state_h,
+                logits,
+                previous_state_c, previous_state_h);
+
+    const int n_frames = logits.size() / (aCtx->batch_size_ * num_classes);
+
+    for (int i = 0; i < batch_size; i++) {
+      vector<double> inputs(n_frames * num_classes);
+      for (int j = 0; j < n_frames; j++) {
+        for (int k = 0; k < num_classes; k++) {
+          inputs[k + j * num_classes] = logits[num_classes * batch_size * j + num_classes * i + k];
+        }
+      }
+      decoders[i].next(inputs.data(), n_frames, num_classes);
+    }
+
+    start += aCtx->n_features_ * aCtx->n_steps_;
+  }
+
+  char* result;
+  for (int i = 0; i < batch_size; i++) {
+    result = aCtx->decode(decoders[i]);
+    std::cout << result << std::endl;
+    std::cout << "----------" << std::endl;
+  }
+  return result;
 }
 
 Metadata*
