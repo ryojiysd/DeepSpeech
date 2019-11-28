@@ -38,6 +38,7 @@ TFModelState::init(const char* model_path)
   bool is_mmap = std::string(model_path).find(".pbmm") != std::string::npos;
   if (!is_mmap) {
     std::cerr << "Warning: reading entire model file into memory. Transform model file into an mmapped graph to reduce heap usage." << std::endl;
+    options.config.mutable_gpu_options()->set_allow_growth(true);
   } else {
     status = mmap_env_->InitializeFromFile(model_path);
     if (!status.ok()) {
