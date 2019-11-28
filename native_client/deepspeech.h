@@ -348,8 +348,12 @@ char* DS_Version();
 DEEPSPEECH_EXPORT
 char* DS_ErrorCodeToErrorMessage(int aErrorCode);
 
+
 DEEPSPEECH_EXPORT
-char* DS_SpeechToTextBatch(ModelState* aCtx, const short** buffers, const unsigned int* bufferSizes, const unsigned int batch_size, unsigned int aSampleRate);
+Metadata** DS_SpeechToTextBatch(ModelState* aCtx, const short** buffers, const unsigned int* bufferSizes, const unsigned int batch_size, unsigned int aSampleRate);
+
+DEEPSPEECH_EXPORT
+void DS_FreeMetadataPtr(Metadata** pm);
 
 #undef DEEPSPEECH_EXPORT
 

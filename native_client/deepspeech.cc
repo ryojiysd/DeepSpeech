@@ -22,6 +22,7 @@
 #endif // USE_TFLITE
 
 #include "ctcdecode/ctc_beam_search_decoder.h"
+#include "ctcdecode/third_party/ThreadPool/ThreadPool.h"
 
 #ifdef __ANDROID__
 #include <android/log.h>
@@ -471,7 +472,14 @@ DS_SpeechToText(ModelState* aCtx,
 
 int ExtractMfcc(ModelState* aCtx, const short* aBuffer, unsigned int aBufferSize, vector<float>& mfccBuffer)
 {
-  mfccBuffer.reserve(aCtx->n_features_ * (aBufferSize / aCtx->audio_win_step_) + 1);
+  mfccBuffer.reserve(aCtx->n_features_ * ((aBufferSize / aCtx->audio_win_step_) + 2 * aCtx->n_context_));
+
+  // Insert blank
+  for (int j = 0; j < aCtx->n_context_; ++j) {
+    vector<float> zero_buffer(aCtx->n_features_, 0.f);
+    std::copy(zero_buffer.begin(), zero_buffer.end(), std::back_inserter(mfccBuffer));
+  }
+
   vector<float> audio_buffer;
   audio_buffer.reserve(aCtx->audio_win_len_);
   while (aBufferSize > 0) {
@@ -500,7 +508,33 @@ int ExtractMfcc(ModelState* aCtx, const short* aBuffer, unsigned int aBufferSize
   return 0;
 }
 
-char* DS_SpeechToTextBatch(ModelState* aCtx, const short** buffers, const unsigned int* bufferSizes, const unsigned int batch_size, unsigned int aSampleRate)
+void decode(vector<DecoderState>& decoders, const vector<float>& logits, const int& num_classes, const int& batch_size, ThreadPool& pool)
+{
+  const int n_frames = logits.size() / (batch_size * num_classes);
+  std::vector<std::future<int>> results;
+  for (int i = 0; i < batch_size; i++) {
+    DecoderState* p_decoder = &decoders[i];
+    results.emplace_back(
+      pool.enqueue([i, batch_size, n_frames, num_classes, p_decoder, logits] () {
+        vector<double> inputs(n_frames * num_classes);
+        for (int j = 0; j < n_frames; j++) {
+          for (int k = 0; k < num_classes; k++) {
+            inputs[k + j * num_classes] = logits[num_classes * batch_size * j + num_classes * i + k];
+          }
+        }
+        p_decoder->next(inputs.data(), n_frames, num_classes);
+        return 0;
+      })
+    );
+  }
+
+  // wait for finishing all tasks
+  for (auto && result: results) {
+    result.get();
+  }
+}
+
+Metadata** DS_SpeechToTextBatch(ModelState* aCtx, const short** buffers, const unsigned int* bufferSizes, const unsigned int batch_size, unsigned int aSampleRate)
 {
   // extract all MfCC
   vector<vector<float>> mfccs(batch_size);
@@ -532,6 +566,8 @@ char* DS_SpeechToTextBatch(ModelState* aCtx, const short** buffers, const unsign
   vector<float> previous_state_c(aCtx->state_size_ * batch_size, 0.f);
   vector<float> previous_state_h(aCtx->state_size_ * batch_size, 0.f);
 
+  ThreadPool pool(8);
+
   while (start + aCtx->mfcc_feats_per_timestep_ < mfccs[0].size()) {
     unsigned int steps = std::min(aCtx->n_steps_, unsigned int(mfccs[0].size() - start) / 26);
     batch_buffer.clear();
@@ -540,11 +576,10 @@ char* DS_SpeechToTextBatch(ModelState* aCtx, const short** buffers, const unsign
     for (int i = 0; i < batch_size; i++) {
       int offset = 0;
       for (int j = 0; j < steps; j++) {
-        // copy_up_to_n(mfccs[i].begin(), mfccs[i].end(), std::back_inserter(batch_buffer), aCtx->mfcc_feats_per_timestep_);
         for (int j = 0; j < aCtx->mfcc_feats_per_timestep_; j++) {
-          batch_buffer.push_back(mfccs[i][j+start+offset]);
+          batch_buffer.push_back(mfccs[i][j + start + offset]);
         }
-        offset += 26;
+        offset += aCtx->n_features_;
       }
     }
 
@@ -555,28 +590,27 @@ char* DS_SpeechToTextBatch(ModelState* aCtx, const short** buffers, const unsign
                 logits,
                 previous_state_c, previous_state_h);
 
-    const int n_frames = logits.size() / (aCtx->batch_size_ * num_classes);
-
-    for (int i = 0; i < batch_size; i++) {
-      vector<double> inputs(n_frames * num_classes);
-      for (int j = 0; j < n_frames; j++) {
-        for (int k = 0; k < num_classes; k++) {
-          inputs[k + j * num_classes] = logits[num_classes * batch_size * j + num_classes * i + k];
-        }
-      }
-      decoders[i].next(inputs.data(), n_frames, num_classes);
-    }
+    decode(decoders, logits, num_classes, batch_size, pool);
 
     start += aCtx->n_features_ * aCtx->n_steps_;
   }
 
-  char* result;
+  auto ret = new Metadata*[batch_size];
+  std::vector<std::future<Metadata*>> results;
   for (int i = 0; i < batch_size; i++) {
-    result = aCtx->decode(decoders[i]);
-    std::cout << result << std::endl;
-    std::cout << "----------" << std::endl;
+    DecoderState* p_decoder = &decoders[i];
+    results.emplace_back(
+      pool.enqueue([aCtx, p_decoder] () {
+        return aCtx->decode_metadata(*p_decoder);
+      })
+    );
   }
-  return result;
+
+  for (int i = 0; i < results.size(); i++) {
+    ret[i] = results[i].get();
+  }
+
+  return ret;
 }
 
 Metadata*
@@ -609,6 +643,17 @@ DS_FreeMetadata(Metadata* m)
 
     free((void*)m->transcripts);
     free(m);
+  }
+}
+
+void
+DS_FreeMetadataPtr(Metadata** pm)
+{
+  if (pm == nullptr) return;
+
+  for (int i = 0; i < 16; i++) {  // TODO: 16 はバッチサイズを取得する処理に置き換える
+    auto m = *(pm + i);
+    DS_FreeMetadata(m);
   }
 }
 
