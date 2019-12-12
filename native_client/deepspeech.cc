@@ -470,6 +470,7 @@ DS_SpeechToText(ModelState* aCtx,
   return DS_FinishStream(ctx);
 }
 
+namespace {
 int ExtractMfcc(ModelState* aCtx, const short* aBuffer, unsigned int aBufferSize, vector<float>& mfccBuffer)
 {
   mfccBuffer.reserve(aCtx->n_features_ * ((aBufferSize / aCtx->audio_win_step_) + 2 * aCtx->n_context_));
@@ -533,6 +534,7 @@ void decode(vector<DecoderState>& decoders, const vector<float>& logits, const i
     result.get();
   }
 }
+}  // namespace
 
 Metadata** DS_SpeechToTextBatch(ModelState* aCtx, const short** buffers, const unsigned int* bufferSizes, const unsigned int batch_size, unsigned int aSampleRate)
 {
@@ -684,4 +686,8 @@ DS_ErrorCodeToErrorMessage(int aErrorCode)
   }
 
 #undef RETURN_MESSAGE
+}
+
+int DS_GetModelBatchSize(ModelState* aCtx) {
+  return aCtx->batch_size_;
 }
