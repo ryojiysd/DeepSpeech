@@ -5,12 +5,18 @@
 using namespace tensorflow;
 using std::vector;
 
-static const int N_GPU = 3;
-
 TFModelState::TFModelState()
   : ModelState()
   , mmap_env_(nullptr)
   , session_(nullptr)
+{
+}
+
+TFModelState::TFModelState(const int gpu_id)
+  : ModelState()
+  , mmap_env_(nullptr)
+  , session_(nullptr)
+  , gpu_id_(gpu_id)
 {
 }
 
@@ -74,19 +80,19 @@ TFModelState::init(const char* model_path)
     return DS_ERR_FAIL_READ_PROTOBUF;
   }
 
-  static int gpuid = 0;
-  char dev[10];
-  sprintf(dev, "/gpu:%d", gpuid % N_GPU);
-  gpuid++;
-  for (int i = 0; i < graph_def_.node_size(); i++) {
-    NodeDef* ndef = graph_def_.mutable_node(i);
-    if (ndef->device().find("CPU") == std::string::npos &&
-        ndef->name().find("bias")  == std::string::npos &&
-        ndef->name().find("weights") == std::string::npos &&
-        ndef->name().find("Audio") == std::string::npos &&
-        ndef->name().find("Mfcc") == std::string::npos &&
-        ndef->name().find("metadata_alphabet") == std::string::npos) {
-      graph_def_.mutable_node(i)->set_device(dev);
+  if (gpu_id_ >= 0) {
+    char dev[10];
+    sprintf(dev, "/gpu:%d", gpu_id_);
+    for (int i = 0; i < graph_def_.node_size(); i++) {
+      NodeDef* ndef = graph_def_.mutable_node(i);
+      if (ndef->device().find("CPU") == std::string::npos &&
+          ndef->name().find("bias")  == std::string::npos &&
+          ndef->name().find("weights") == std::string::npos &&
+          ndef->name().find("Audio") == std::string::npos &&
+          ndef->name().find("Mfcc") == std::string::npos &&
+          ndef->name().find("metadata_alphabet") == std::string::npos) {
+        graph_def_.mutable_node(i)->set_device(dev);
+      }
     }
   }
 

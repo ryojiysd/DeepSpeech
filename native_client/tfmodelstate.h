@@ -11,11 +11,14 @@
 
 struct TFModelState : public ModelState
 {
+  int gpu_id_ = -1;
+
   std::unique_ptr<tensorflow::MemmappedEnv> mmap_env_;
   std::unique_ptr<tensorflow::Session> session_;
   tensorflow::GraphDef graph_def_;
 
   TFModelState();
+  TFModelState(const int gpu_id);
   virtual ~TFModelState();
 
   virtual int init(const char* model_path) override;
