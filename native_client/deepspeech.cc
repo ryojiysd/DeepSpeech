@@ -277,7 +277,8 @@ StreamingState::processBatch(const vector<float>& buf, unsigned int n_steps)
 
 int
 DS_CreateModel(const char* aModelPath,
-               ModelState** retval)
+               ModelState** retval,
+               const int gpu_id)
 {
   *retval = nullptr;
 
@@ -297,7 +298,7 @@ DS_CreateModel(const char* aModelPath,
 
   std::unique_ptr<ModelState> model(
 #ifndef USE_TFLITE
-    new TFModelState()
+    new TFModelState(gpu_id)
 #else
     new TFLiteModelState()
 #endif

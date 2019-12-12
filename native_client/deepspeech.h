@@ -102,7 +102,8 @@ DS_FOR_EACH_ERROR(DEFINE)
  */
 DEEPSPEECH_EXPORT
 int DS_CreateModel(const char* aModelPath,
-                   ModelState** retval);
+                   ModelState** retval,
+                   const int gpu_id = -1);
 
 /**
  * @brief Get beam width value used by the model. If {@link DS_SetModelBeamWidth}
