@@ -349,11 +349,16 @@ DEEPSPEECH_EXPORT
 char* DS_ErrorCodeToErrorMessage(int aErrorCode);
 
 
+////////// Following methods are added by NEC /////////////////////////
 DEEPSPEECH_EXPORT
 Metadata** DS_SpeechToTextBatch(ModelState* aCtx, const short** buffers, const unsigned int* bufferSizes, const unsigned int batch_size, unsigned int aSampleRate);
 
 DEEPSPEECH_EXPORT
 void DS_FreeMetadataPtr(Metadata** pm);
+
+DEEPSPEECH_EXPORT
+int DS_GetModelBatchSize(ModelState* aCtx);
+///////////////////////////////////////////////////////////////////////
 
 #undef DEEPSPEECH_EXPORT
 
