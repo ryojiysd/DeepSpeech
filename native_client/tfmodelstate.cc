@@ -1,5 +1,7 @@
 #include "tfmodelstate.h"
 
+#include "tensorflow/core/graph/default_device.h"
+
 #include "workspace_status.h"
 
 using namespace tensorflow;
@@ -46,7 +48,6 @@ TFModelState::init(const char* model_path)
   bool is_mmap = std::string(model_path).find(".pbmm") != std::string::npos;
   if (!is_mmap) {
     std::cerr << "Warning: reading entire model file into memory. Transform model file into an mmapped graph to reduce heap usage." << std::endl;
-    options.config.mutable_gpu_options()->set_allow_growth(true);
   } else {
     status = mmap_env_->InitializeFromFile(model_path);
     if (!status.ok()) {
@@ -58,6 +59,12 @@ TFModelState::init(const char* model_path)
       ->mutable_optimizer_options()
       ->set_opt_level(::OptimizerOptions::L0);
     options.env = mmap_env_.get();
+  }
+
+  options.config.mutable_gpu_options()->set_allow_growth(true);
+
+  if (gpu_id_ >= 0) {
+    options.config.set_allow_soft_placement(true);
   }
 
   Session* session;
@@ -83,17 +90,7 @@ TFModelState::init(const char* model_path)
   if (gpu_id_ >= 0) {
     char dev[10];
     sprintf(dev, "/gpu:%d", gpu_id_);
-    for (int i = 0; i < graph_def_.node_size(); i++) {
-      NodeDef* ndef = graph_def_.mutable_node(i);
-      if (ndef->device().find("CPU") == std::string::npos &&
-          ndef->name().find("bias")  == std::string::npos &&
-          ndef->name().find("weights") == std::string::npos &&
-          ndef->name().find("Audio") == std::string::npos &&
-          ndef->name().find("Mfcc") == std::string::npos &&
-          ndef->name().find("metadata_alphabet") == std::string::npos) {
-        graph_def_.mutable_node(i)->set_device(dev);
-      }
-    }
+    ::tensorflow::graph::SetDefaultDevice(dev, &graph_def_);
   }
 
   status = session_->Create(graph_def_);
