@@ -29,6 +29,7 @@ TFModelState::~TFModelState()
     if (!status.ok()) {
       std::cerr << "Error closing TensorFlow session: " << status << std::endl;
     }
+    delete session_;
   }
 }
 
@@ -61,9 +62,9 @@ TFModelState::init(const char* model_path)
     options.env = mmap_env_.get();
   }
 
-  options.config.mutable_gpu_options()->set_allow_growth(true);
-
   if (gpu_id_ >= 0) {
+    // options.config.mutable_gpu_options()->set_allow_growth(true);
+    options.config.mutable_gpu_options()->set_per_process_gpu_memory_fraction(0.4);
     options.config.set_allow_soft_placement(true);
   }
 
