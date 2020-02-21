@@ -650,11 +650,11 @@ DS_FreeMetadata(Metadata* m)
 }
 
 void
-DS_FreeMetadataPtr(Metadata** pm)
+DS_FreeMetadataPtr(Metadata** pm, const unsigned int batch_size)
 {
   if (pm == nullptr) return;
 
-  for (int i = 0; i < 16; i++) {  // TODO: 16 はバッチサイズを取得する処理に置き換える
+  for (int i = 0; i < batch_size; i++) {
     auto m = *(pm + i);
     DS_FreeMetadata(m);
   }
