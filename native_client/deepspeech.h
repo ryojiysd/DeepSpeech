@@ -355,7 +355,7 @@ DEEPSPEECH_EXPORT
 Metadata** DS_SpeechToTextBatch(ModelState* aCtx, const short** buffers, const unsigned int* bufferSizes, const unsigned int batch_size, unsigned int aSampleRate);
 
 DEEPSPEECH_EXPORT
-void DS_FreeMetadataPtr(Metadata** pm);
+void DS_FreeMetadataPtr(Metadata** pm, const unsigned int batch_size);
 
 DEEPSPEECH_EXPORT
 int DS_GetModelBatchSize(ModelState* aCtx);
