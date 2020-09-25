@@ -559,7 +559,7 @@ Metadata** DS_SpeechToTextBatch(ModelState* aCtx, const short** buffers, const u
   const int cutoff_top_n = 40;
   const double cutoff_prob = 0.99;
   for (int i = 0; i < batch_size; i++) {
-    decoders[i].init(aCtx->alphabet_, aCtx->beam_width_, cutoff_prob, cutoff_top_n, aCtx->scorer_.get());
+    decoders[i].init(aCtx->alphabet_, aCtx->beam_width_, cutoff_prob, cutoff_top_n, aCtx->scorer_);
   }
 
   const size_t num_classes = aCtx->alphabet_.GetSize() + 1;  // +1 for blank
@@ -604,7 +604,8 @@ Metadata** DS_SpeechToTextBatch(ModelState* aCtx, const short** buffers, const u
     DecoderState* p_decoder = &decoders[i];
     results.emplace_back(
       pool.enqueue([aCtx, p_decoder] () {
-        return aCtx->decode_metadata(*p_decoder);
+        unsigned int num_results;  // TODO
+        return aCtx->decode_metadata(*p_decoder, num_results);
       })
     );
   }
@@ -670,23 +671,6 @@ char*
 DS_Version()
 {
   return strdup(ds_version());
-}
-
-char*
-DS_ErrorCodeToErrorMessage(int aErrorCode)
-{
-#define RETURN_MESSAGE(NAME, VALUE, DESC) \
-    case NAME: \
-      return strdup(DESC);
-
-  switch(aErrorCode)
-  {
-    DS_FOR_EACH_ERROR(RETURN_MESSAGE)
-    default:
-      return strdup("Unknown error, please make sure you are using the correct native binary.");
-  }
-
-#undef RETURN_MESSAGE
 }
 
 int DS_GetModelBatchSize(ModelState* aCtx) {

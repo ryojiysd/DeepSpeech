@@ -29,7 +29,6 @@ TFModelState::~TFModelState()
     if (!status.ok()) {
       std::cerr << "Error closing TensorFlow session: " << status << std::endl;
     }
-    delete session_;
   }
 }
 
