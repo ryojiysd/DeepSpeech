@@ -1,22 +1,24 @@
+.. _training-docs:
+
 Training Your Own Model
 =======================
 
 Prerequisites for training a model
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-
 * `Python 3.6 <https://www.python.org/>`_
-* `Git Large File Storage <https://git-lfs.github.com/>`_
 * Mac or Linux environment
 
 Getting the training code
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Install `Git Large File Storage <https://git-lfs.github.com/>`_ either manually or through a package-manager if available on your system. Then clone the DeepSpeech repository normally:
+Clone the latest released stable branch from Github (e.g. 0.8.2, check `here <https://github.com/mozilla/DeepSpeech/releases>`_): 
 
 .. code-block:: bash
 
-   git clone https://github.com/mozilla/DeepSpeech
+   git clone --branch v0.8.2 https://github.com/mozilla/DeepSpeech
+
+If you plan on committing code or you want to report bugs, please use the master branch.
 
 Creating a virtual environment
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -46,7 +48,7 @@ Install the required dependencies using ``pip3``\ :
 .. code-block:: bash
 
    cd DeepSpeech
-   pip3 install --upgrade pip==20.0.2 wheel==0.34.2 setuptools==46.1.3
+   pip3 install --upgrade pip==20.2.2 wheel==0.34.2 setuptools==49.6.0
    pip3 install --upgrade -e .
 
 Remember to re-run the last ``pip3 install`` command above when you update the training code (for example by pulling new changes), in order to update any dependencies.
@@ -65,7 +67,7 @@ If you have a capable (NVIDIA, at least 8GB of VRAM) GPU, it is highly recommend
 .. code-block:: bash
 
    pip3 uninstall tensorflow
-   pip3 install 'tensorflow-gpu==1.15.2'
+   pip3 install 'tensorflow-gpu==1.15.4'
 
 Please ensure you have the required :ref:`CUDA dependency <cuda-deps>`.
 
@@ -111,18 +113,21 @@ For bringing this data into a form that DeepSpeech understands, you have to run 
 
    bin/import_cv2.py --filter_alphabet path/to/some/alphabet.txt /path/to/extracted/language/archive
 
-Providing a filter alphabet is optional. It will exclude all samples whose transcripts contain characters not in the specified alphabet. 
+Providing a filter alphabet is optional. It will exclude all samples whose transcripts contain characters not in the specified alphabet.
 Running the importer with ``-h`` will show you some additional options.
 
 Once the import is done, the ``clips`` sub-directory will contain for each required ``.mp3`` an additional ``.wav`` file.
 It will also add the following ``.csv`` files:
 
-
 * ``clips/train.csv``
 * ``clips/dev.csv``
 * ``clips/test.csv``
 
-All entries in these CSV files refer to their samples by absolute paths. So moving this sub-directory would require another import or tweaking the CSV files accordingly.
+The CSV files comprise of the following fields:
+
+* ``wav_filename`` - path of the sample, either absolute or relative. Here, the importer produces relative paths.
+* ``wav_filesize`` - samples size given in bytes, used for sorting the data before training. Expects integer.
+* ``transcript`` - transcription target for the sample.
 
 To use Common Voice data during training, validation and testing, you pass (comma separated combinations of) their filenames into ``--train_files``\ , ``--dev_files``\ , ``--test_files`` parameters of ``DeepSpeech.py``.
 
@@ -202,7 +207,7 @@ Refer to the :ref:`usage instructions <usage-docs>` for information on running a
 Exporting a model for TFLite
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-If you want to experiment with the TF Lite engine, you need to export a model that is compatible with it, then use the ``--export_tflite`` flags. If you already have a trained model, you can re-export it for TFLite by running ``DeepSpeech.py`` again and specifying the same ``checkpoint_dir`` that you used for training, as well as passing ``--export_tflite --export_dir /model/export/destination``.
+If you want to experiment with the TF Lite engine, you need to export a model that is compatible with it, then use the ``--export_tflite`` flags. If you already have a trained model, you can re-export it for TFLite by running ``DeepSpeech.py`` again and specifying the same ``checkpoint_dir`` that you used for training, as well as passing ``--export_tflite --export_dir /model/export/destination``. If you changed the alphabet you also need to add the ``--alphabet_config_path my-new-language-alphabet.txt`` flag.
 
 Making a mmap-able model for inference
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -231,6 +236,8 @@ There are currently two supported approaches to make use of a pre-trained DeepSp
 If your own data uses the *extact* same alphabet as the English release model (i.e. `a-z` plus `'`) then the release model's output layer will match your data, and you can just fine-tune the existing parameters. However, if you want to use a new alphabet (e.g. Cyrillic `а`, `б`, `д`), the output layer of a release DeepSpeech model will *not* match your data. In this case, you should use transfer-learning (i.e. remove the trained model's output layer, and reinitialize a new output layer that matches your target character set.
 
 N.B. - If you have access to a pre-trained model which uses UTF-8 bytes at the output layer you can always fine-tune, because any alphabet should be encodable as UTF-8.
+
+.. _training-fine-tuning:
 
 Fine-Tuning (same alphabet)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -282,6 +289,8 @@ UTF-8 mode
 
 DeepSpeech includes a UTF-8 operating mode which can be useful to model languages with very large alphabets, such as Chinese Mandarin. For details on how it works and how to use it, see :ref:`decoder-docs`.
 
+
+.. _training-data-augmentation:
 
 Augmentation
 ^^^^^^^^^^^^
@@ -399,6 +408,20 @@ Spectrogram domain augmentations
   * **factor**: speed factor by which the time axis is stretched or shrunken (e.g. a value of 2.0 will double playback tempo)
 
 
+**Warp augmentation** ``--augment warp[p=<float>,nt=<int-range>,nf=<int-range>,wt=<float-range>,wf=<float-range>]``
+  Applies a non-linear image warp to the spectrogram. This is achieved by randomly shifting a grid of equally distributed warp points along time and frequency axis.
+
+  * **p**: probability value between 0.0 (never) and 1.0 (always) if a given sample gets augmented by this method
+
+  * **nt**: number of equally distributed warp grid lines along time axis of the spectrogram (excluding the edges)
+
+  * **nf**: number of equally distributed warp grid lines along frequency axis of the spectrogram (excluding the edges)
+
+  * **wt**: standard deviation of the random shift applied to warp points along time axis (0.0 = no warp, 1.0 = half the distance to the neighbour point)
+
+  * **wf**: standard deviation of the random shift applied to warp points along frequency axis (0.0 = no warp, 1.0 = half the distance to the neighbour point)
+
+
 **Frequency mask augmentation** ``--augment frequency_mask[p=<float>,n=<int-range>,size=<int-range>]``
   Sets frequency-intervals within the augmented samples to zero (silence) at random frequencies. See the SpecAugment paper for more details - https://arxiv.org/abs/1904.08779
 
@@ -469,6 +492,7 @@ Example training with all augmentations:
           --augment volume[p=0.1,dbfs=-10:-40] \
           --augment pitch[p=0.1,pitch=1~0.2] \
           --augment tempo[p=0.1,factor=1~0.5] \
+          --augment warp[p=0.1,nt=4,nf=1,wt=0.5:1.0,wf=0.1:0.2] \
           --augment frequency_mask[p=0.1,n=1:3,size=1:5] \
           --augment time_mask[p=0.1,domain=signal,n=3:10~2,size=50:100~40] \
           --augment dropout[p=0.1,rate=0.05] \
@@ -477,7 +501,7 @@ Example training with all augmentations:
           [...]
 
 
-The ``bin/play.py`` tool also supports ``--augment`` parameters (for sample domain augmentations) and can be used for experimenting with different configurations.
+The ``bin/play.py`` and ``bin/data_set_tool.py`` tools also support ``--augment`` parameters (for sample domain augmentations) and can be used for experimenting with different configurations or creating augmented data sets.
 
 Example of playing all samples with reverberation and maximized volume:
 
@@ -491,3 +515,12 @@ Example simulation of the codec augmentation of a wav-file first at the beginnin
 
         bin/play.py --augment codec[p=0.1,bitrate=48000:16000] --clock 0.0 test.wav
         bin/play.py --augment codec[p=0.1,bitrate=48000:16000] --clock 1.0 test.wav
+
+Example of creating a pre-augmented test set:
+
+.. code-block:: bash
+
+        bin/data_set_tool.py \
+          --augment overlay[source=noise.sdb,layers=1,snr=20~10] \
+          --augment resample[rate=12000:8000~4000] \
+          test.sdb test-augmented.sdb

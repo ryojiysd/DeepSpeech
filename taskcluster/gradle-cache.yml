@@ -5,10 +5,12 @@ build:
     artifact_namespace: ${system.gradle_cache.namespace}
   system_setup:
     >
-      ${java.packages_trusty.apt}
+      ${java.packages_xenial.apt}
   scripts:
+    setup: "taskcluster/tc-true.sh"
     build: "taskcluster/gradle-build.sh"
     package: "taskcluster/gradle-package.sh"
+  workerType: "${docker.smallTask}"
   metadata:
     name: "Builds Gradle cache"
     description: "Setup a Gradle cache for Android"

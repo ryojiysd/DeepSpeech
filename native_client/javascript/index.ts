@@ -8,7 +8,13 @@ const binding_path = binary.find(path.resolve(path.join(__dirname, 'package.json
 // @loader_path/../ but we can change the PATH to include the proper directory
 // for the dynamic linker
 if (process.platform === 'win32') {
-    const dslib_path = path.resolve(path.join(binding_path, '../..'));
+    var dslib_path = path.resolve(path.join(binding_path, '../..'));
+    // electron-builder does weird magic hand-in-hand with electronjs,
+    // and messes with the path where we expect things to be for the Windows
+    // linker.
+    if ('electron' in process.versions) {
+      dslib_path = dslib_path.replace("app.asar", "app.asar.unpacked");
+    }
     var oldPath = process.env.PATH;
     process.env['PATH'] = `${dslib_path};${process.env.PATH}`;
 }
@@ -173,6 +179,47 @@ export class Model {
         const status = binding.SetModelBeamWidth(this._impl, aBeamWidth);
         if (status !== 0) {
             throw `SetModelBeamWidth failed: ${binding.ErrorCodeToErrorMessage(status)} (0x${status.toString(16)})`;
+        }
+    }
+
+    /**
+     * Add a hot-word and its boost
+     *
+     * @param aWord word
+     * @param aBoost boost
+     *
+     * @throws on error
+     */
+     addHotWord(aWord: string, aBoost: number): void {
+        const status = binding.addHotWord(this._impl, aWord, aBoost);
+        if (status !== 0) {
+            throw `addHotWord failed: ${binding.ErrorCodeToErrorMessage(status)} (0x${status.toString(16)})`;
+        }
+    }
+
+    /**
+     * Erase entry for hot-word
+     *
+     * @param aWord word
+     *
+     * @throws on error
+     */
+    eraseHotWord(aWord: string): void {
+        const status = binding.eraseHotWord(this._impl, aWord);
+        if (status !== 0) {
+            throw `eraseHotWord failed: ${binding.ErrorCodeToErrorMessage(status)} (0x${status.toString(16)})`;
+        }
+    }
+
+    /**
+     * Clear all hot-word entries
+     *
+     * @throws on error
+     */
+    clearHotWords(): void {
+        const status = binding.clearHotWords(this._impl);
+        if (status !== 0) {
+            throw `clearHotWord failed: ${binding.ErrorCodeToErrorMessage(status)} (0x${status.toString(16)})`;
         }
     }
 

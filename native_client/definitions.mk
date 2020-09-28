@@ -1,7 +1,7 @@
 NC_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 TARGET    ?= host
-TFDIR     ?= $(abspath $(NC_DIR)/../../tensorflow)
+TFDIR     ?= $(abspath $(NC_DIR)/../tensorflow)
 PREFIX    ?= /usr/local
 SO_SEARCH ?= $(TFDIR)/bazel-bin/
 
@@ -48,7 +48,7 @@ endif
 endif
 
 ifeq ($(TARGET),host-win)
-TOOLCHAIN := '$(VCINSTALLDIR)\bin\amd64\'
+TOOLCHAIN := '$(VCToolsInstallDir)\bin\Hostx64\x64\'
 TOOL_CC     := cl.exe
 TOOL_CXX    := cl.exe
 TOOL_LD     := link.exe
@@ -65,7 +65,7 @@ ifeq ($(TARGET),rpi3)
 TOOLCHAIN   ?= ${TFDIR}/bazel-$(shell basename "${TFDIR}")/external/LinaroArmGcc72/bin/arm-linux-gnueabihf-
 RASPBIAN    ?= $(abspath $(NC_DIR)/../multistrap-raspbian-buster)
 CFLAGS      := -march=armv7-a -mtune=cortex-a53 -mfpu=neon-fp-armv8 -mfloat-abi=hard -D_GLIBCXX_USE_CXX11_ABI=0 --sysroot $(RASPBIAN)
-CXXFLAGS    := $(CXXFLAGS)
+CXXFLAGS    := $(CFLAGS)
 LDFLAGS     := -Wl,-rpath-link,$(RASPBIAN)/lib/arm-linux-gnueabihf/ -Wl,-rpath-link,$(RASPBIAN)/usr/lib/arm-linux-gnueabihf/
 
 SOX_CFLAGS  := -I$(RASPBIAN)/usr/include
@@ -101,6 +101,20 @@ NODE_PLATFORM_TARGET := --target_arch=arm64 --target_platform=linux
 TOOLCHAIN_LDD_OPTS   := --root $(RASPBIAN)/
 endif # ($(TARGET),rpi3-armv8)
 
+ifeq ($(TARGET),ios-simulator)
+CFLAGS          := -isysroot $(shell xcrun -sdk iphonesimulator13.5 -show-sdk-path)
+SOX_CFLAGS      :=
+SOX_LDFLAGS     :=
+LDFLAGS         :=
+endif
+
+ifeq ($(TARGET),ios-arm64)
+CFLAGS          := -target arm64-apple-ios -isysroot $(shell xcrun -sdk iphoneos13.5 -show-sdk-path)
+SOX_CFLAGS      :=
+SOX_LDFLAGS     :=
+LDFLAGS         :=
+endif
+
 # -Wl,--no-as-needed is required to force linker not to evict libs it thinks we
 # dont need ; will fail the build on OSX because that option does not exists
 ifeq ($(OS),Linux)
@@ -108,9 +122,13 @@ LDFLAGS_NEEDED := -Wl,--no-as-needed
 LDFLAGS_RPATH  := -Wl,-rpath,\$$ORIGIN
 endif
 ifeq ($(OS),Darwin)
-CXXFLAGS       += -stdlib=libc++ -mmacosx-version-min=10.10
-LDFLAGS_NEEDED := -stdlib=libc++ -mmacosx-version-min=10.10
+CXXFLAGS       += -stdlib=libc++
+LDFLAGS_NEEDED := -stdlib=libc++
 LDFLAGS_RPATH  := -Wl,-rpath,@executable_path
+ifeq ($(TARGET),host)
+CXXFLAGS       += -mmacosx-version-min=10.10
+LDFLAGS_NEEDED += -mmacosx-version-min=10.10
+endif
 endif
 
 CFLAGS   += $(EXTRA_CFLAGS)
@@ -182,11 +200,11 @@ endef
 
 SWIG_DIST_URL ?= 
 ifeq ($(findstring Linux,$(OS)),Linux)
-SWIG_DIST_URL := "https://community-tc.services.mozilla.com/api/index/v1/task/project.deepspeech.swig.linux.amd64.b5fea54d39832d1d132d7dd921b69c0c2c9d5118/artifacts/public/ds-swig.tar.gz"
+SWIG_DIST_URL := "https://community-tc.services.mozilla.com/api/index/v1/task/project.deepspeech.swig.linux.amd64.1a4c14945012f1282c2eddc174fb7674d5295de8.0/artifacts/public/ds-swig.tar.gz"
 else ifeq ($(findstring Darwin,$(OS)),Darwin)
-SWIG_DIST_URL := "https://community-tc.services.mozilla.com/api/index/v1/task/project.deepspeech.swig.darwin.amd64.b5fea54d39832d1d132d7dd921b69c0c2c9d5118/artifacts/public/ds-swig.tar.gz"
+SWIG_DIST_URL := "https://community-tc.services.mozilla.com/api/index/v1/task/project.deepspeech.swig.darwin.amd64.1a4c14945012f1282c2eddc174fb7674d5295de8.0/artifacts/public/ds-swig.tar.gz"
 else ifeq ($(findstring _NT,$(OS)),_NT)
-SWIG_DIST_URL := "https://community-tc.services.mozilla.com/api/index/v1/task/project.deepspeech.swig.win.amd64.b5fea54d39832d1d132d7dd921b69c0c2c9d5118/artifacts/public/ds-swig.tar.gz"
+SWIG_DIST_URL := "https://community-tc.services.mozilla.com/api/index/v1/task/project.deepspeech.swig.win.amd64.1a4c14945012f1282c2eddc174fb7674d5295de8.0/artifacts/public/ds-swig.tar.gz"
 else
 $(error There is no prebuilt SWIG available for your platform. Please produce one and set SWIG_DIST_URL.)
 endif

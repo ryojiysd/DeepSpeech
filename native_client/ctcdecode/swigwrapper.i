@@ -11,6 +11,7 @@
 %include <std_string.i>
 %include <std_vector.i>
 %include <std_shared_ptr.i>
+%include <std_unordered_map.i>
 %include "numpy.i"
 
 %init %{
@@ -19,6 +20,10 @@ import_array();
 
 namespace std {
     %template(StringVector) vector<string>;
+    %template(UnsignedIntVector) vector<unsigned int>;
+    %template(OutputVector) vector<Output>;
+    %template(OutputVectorVector) vector<vector<Output>>;
+    %template(Map) unordered_map<string, float>;
 }
 
 %shared_ptr(Scorer);
@@ -27,6 +32,7 @@ namespace std {
 %apply (double* IN_ARRAY2, int DIM1, int DIM2) {(const double *probs, int time_dim, int class_dim)};
 %apply (double* IN_ARRAY3, int DIM1, int DIM2, int DIM3) {(const double *probs, int batch_size, int time_dim, int class_dim)};
 %apply (int* IN_ARRAY1, int DIM1) {(const int *seq_lengths, int seq_lengths_size)};
+%apply (unsigned int* IN_ARRAY1, int DIM1) {(const unsigned int *input, int length)};
 
 %ignore Scorer::dictionary;
 
@@ -37,10 +43,6 @@ namespace std {
 
 %constant const char* __version__ = ds_version();
 %constant const char* __git_version__ = ds_git_version();
-
-%template(IntVector) std::vector<int>;
-%template(OutputVector) std::vector<Output>;
-%template(OutputVectorVector) std::vector<std::vector<Output>>;
 
 // Import only the error code enum definitions from deepspeech.h
 // We can't just do |%ignore "";| here because it affects this file globally (even

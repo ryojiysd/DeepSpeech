@@ -8,8 +8,10 @@ build:
     >
       (apt-get -qq -y install sudo || true)
   scripts:
+    setup: "taskcluster/tc-true.sh"
     build: "taskcluster/node-gyp-populate.sh"
     package: "taskcluster/node-gyp-package.sh"
+  workerType: "${docker.smallTask}"
   metadata:
     name: "Cache for node-gyp headers"
     description: "Building cache for node-gyp headers"

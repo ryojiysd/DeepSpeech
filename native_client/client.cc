@@ -12,7 +12,11 @@
 #include <sstream>
 #include <string>
 
-#if defined(__ANDROID__) || defined(_MSC_VER)
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
+#if defined(__ANDROID__) || defined(_MSC_VER) || TARGET_OS_IPHONE
 #define NO_SOX
 #endif
 
@@ -244,7 +248,7 @@ GetAudioBuffer(const char* path, int desired_sample_rate)
     sox_false // Reverse endianness
   };
 
-#ifdef __APPLE__
+#if TARGET_OS_OSX
   // It would be preferable to use sox_open_memstream_write here, but OS-X
   // doesn't support POSIX 2008, which it requires. See Issue #461.
   // Instead, we write to a temporary file.
@@ -348,7 +352,7 @@ GetAudioBuffer(const char* path, int desired_sample_rate)
   fclose(wave);
 #endif // NO_SOX
 
-#ifdef __APPLE__
+#if TARGET_OS_OSX
   res.buffer_size = (size_t)(output->olength * 2);
   res.buffer = (char*)malloc(sizeof(char) * res.buffer_size);
   FILE* output_file = fopen(output_name, "rb");
@@ -384,6 +388,22 @@ ProcessFile(ModelState* context, const char* path, bool show_times)
     printf("cpu_time_overall=%.05f\n",
            result.cpu_time_overall);
   }
+}
+
+std::vector<std::string>
+SplitStringOnDelim(std::string in_string, std::string delim)
+{
+  std::vector<std::string> out_vector;
+  char * tmp_str = new char[in_string.size() + 1];
+  std::copy(in_string.begin(), in_string.end(), tmp_str);
+  tmp_str[in_string.size()] = '\0';
+  const char* token = strtok(tmp_str, delim.c_str());
+  while( token != NULL ) {
+    out_vector.push_back(token);
+    token = strtok(NULL, delim.c_str());
+  }
+  delete[] tmp_str;
+  return out_vector;
 }
 
 int
@@ -427,6 +447,23 @@ main(int argc, char **argv)
     }
   }
   // sphinx-doc: c_ref_model_stop
+
+  if (hot_words) {
+    std::vector<std::string> hot_words_ = SplitStringOnDelim(hot_words, ",");
+    for ( std::string hot_word_ : hot_words_ ) {
+      std::vector<std::string> pair_ = SplitStringOnDelim(hot_word_, ":");
+      const char* word = (pair_[0]).c_str();
+      // the strtof function will return 0 in case of non numeric characters
+      // so, check the boost string before we turn it into a float
+      bool boost_is_valid = (pair_[1].find_first_not_of("-.0123456789") == std::string::npos);
+      float boost = strtof((pair_[1]).c_str(),0);
+      status = DS_AddHotWord(ctx, word, boost);
+      if (status != 0 || !boost_is_valid) {
+        fprintf(stderr, "Could not enable hot-word.\n");
+        return 1;
+      }
+    }
+  }
 
 #ifndef NO_SOX
   // Initialise SOX

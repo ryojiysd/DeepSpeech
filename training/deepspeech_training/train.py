@@ -29,7 +29,7 @@ from ds_ctcdecoder import ctc_beam_search_decoder, Scorer
 from .evaluate import evaluate
 from six.moves import zip, range
 from .util.config import Config, initialize_globals
-from .util.checkpoints import load_or_init_graph_for_training, load_graph_for_evaluation
+from .util.checkpoints import load_or_init_graph_for_training, load_graph_for_evaluation, reload_best_checkpoint
 from .util.evaluate_tools import save_samples_json
 from .util.feeding import create_dataset, audio_to_features, audiofile_to_features
 from .util.flags import create_flags, FLAGS
@@ -74,7 +74,7 @@ def create_overlapping_windows(batch_x):
     return batch_x
 
 
-def dense(name, x, units, dropout_rate=None, relu=True):
+def dense(name, x, units, dropout_rate=None, relu=True, layer_norm=False):
     with tfv1.variable_scope(name):
         bias = variable_on_cpu('bias', [units], tfv1.zeros_initializer())
         weights = variable_on_cpu('weights', [x.shape[-1], units], tfv1.keras.initializers.VarianceScaling(scale=1.0, mode="fan_avg", distribution="uniform"))
@@ -83,6 +83,10 @@ def dense(name, x, units, dropout_rate=None, relu=True):
 
     if relu:
         output = tf.minimum(tf.nn.relu(output), FLAGS.relu_clip)
+
+    if layer_norm:
+        with tfv1.variable_scope(name):
+            output = tf.contrib.layers.layer_norm(output)
 
     if dropout_rate is not None:
         output = tf.nn.dropout(output, rate=dropout_rate)
@@ -177,9 +181,9 @@ def create_model(batch_x, seq_length, dropout, reuse=False, batch_size=None, pre
 
     # The next three blocks will pass `batch_x` through three hidden layers with
     # clipped RELU activation and dropout.
-    layers['layer_1'] = layer_1 = dense('layer_1', batch_x, Config.n_hidden_1, dropout_rate=dropout[0])
-    layers['layer_2'] = layer_2 = dense('layer_2', layer_1, Config.n_hidden_2, dropout_rate=dropout[1])
-    layers['layer_3'] = layer_3 = dense('layer_3', layer_2, Config.n_hidden_3, dropout_rate=dropout[2])
+    layers['layer_1'] = layer_1 = dense('layer_1', batch_x, Config.n_hidden_1, dropout_rate=dropout[0], layer_norm=FLAGS.layer_norm)
+    layers['layer_2'] = layer_2 = dense('layer_2', layer_1, Config.n_hidden_2, dropout_rate=dropout[1], layer_norm=FLAGS.layer_norm)
+    layers['layer_3'] = layer_3 = dense('layer_3', layer_2, Config.n_hidden_3, dropout_rate=dropout[2], layer_norm=FLAGS.layer_norm)
 
     # `layer_3` is now reshaped into `[n_steps, batch_size, 2*n_cell_dim]`,
     # as the LSTM RNN expects its input to be of shape `[max_time, batch_size, input_size]`.
@@ -196,7 +200,7 @@ def create_model(batch_x, seq_length, dropout, reuse=False, batch_size=None, pre
     layers['rnn_output_state'] = output_state
 
     # Now we feed `output` to the fifth hidden layer with clipped RELU activation
-    layers['layer_5'] = layer_5 = dense('layer_5', output, Config.n_hidden_5, dropout_rate=dropout[5])
+    layers['layer_5'] = layer_5 = dense('layer_5', output, Config.n_hidden_5, dropout_rate=dropout[5], layer_norm=FLAGS.layer_norm)
 
     # Now we apply a final linear layer creating `n_classes` dimensional vectors, the logits.
     layers['layer_6'] = layer_6 = dense('layer_6', layer_5, Config.n_hidden_6, relu=False)
@@ -417,6 +421,8 @@ def train():
                                train_phase=True,
                                exception_box=exception_box,
                                process_ahead=len(Config.available_devices) * FLAGS.train_batch_size * 2,
+                               reverse=FLAGS.reverse_train,
+                               limit=FLAGS.limit_train,
                                buffering=FLAGS.read_buffer)
 
     iterator = tfv1.data.Iterator.from_structure(tfv1.data.get_output_types(train_set),
@@ -433,6 +439,8 @@ def train():
                                    train_phase=False,
                                    exception_box=exception_box,
                                    process_ahead=len(Config.available_devices) * FLAGS.dev_batch_size * 2,
+                                   reverse=FLAGS.reverse_dev,
+                                   limit=FLAGS.limit_dev,
                                    buffering=FLAGS.read_buffer) for source in dev_sources]
         dev_init_ops = [iterator.make_initializer(dev_set) for dev_set in dev_sets]
 
@@ -443,6 +451,8 @@ def train():
                                        train_phase=False,
                                        exception_box=exception_box,
                                        process_ahead=len(Config.available_devices) * FLAGS.dev_batch_size * 2,
+                                       reverse=FLAGS.reverse_dev,
+                                       limit=FLAGS.limit_dev,
                                        buffering=FLAGS.read_buffer) for source in metrics_sources]
         metrics_init_ops = [iterator.make_initializer(metrics_set) for metrics_set in metrics_sets]
 
@@ -630,14 +640,25 @@ def train():
                         break
 
                     # Reduce learning rate on plateau
-                    if (FLAGS.reduce_lr_on_plateau and
-                            epochs_without_improvement % FLAGS.plateau_epochs == 0 and epochs_without_improvement > 0):
-                        # If the learning rate was reduced and there is still no improvement
-                        # wait FLAGS.plateau_epochs before the learning rate is reduced again
+                    # If the learning rate was reduced and there is still no improvement
+                    # wait FLAGS.plateau_epochs before the learning rate is reduced again
+                    if (
+                        FLAGS.reduce_lr_on_plateau
+                        and epochs_without_improvement > 0
+                        and epochs_without_improvement % FLAGS.plateau_epochs == 0
+                    ):
+                        # Reload checkpoint that we use the best_dev weights again
+                        reload_best_checkpoint(session)
+
+                        # Reduce learning rate
                         session.run(reduce_learning_rate_op)
                         current_learning_rate = learning_rate_var.eval()
                         log_info('Encountered a plateau, reducing learning rate to {}'.format(
                             current_learning_rate))
+
+                        # Overwrite best checkpoint with new learning rate value
+                        save_path = best_dev_saver.save(session, best_dev_path, global_step=global_step, latest_filename='best_dev_checkpoint')
+                        log_info("Saved best validating model with reduced learning rate to: %s" % (save_path))
 
                 if FLAGS.metrics_files:
                     # Read only metrics, not affecting best validation loss tracking
@@ -771,7 +792,7 @@ def export():
     outputs['metadata_feature_win_len'] = tf.constant([FLAGS.feature_win_len], name='metadata_feature_win_len')
     outputs['metadata_feature_win_step'] = tf.constant([FLAGS.feature_win_step], name='metadata_feature_win_step')
     outputs['metadata_beam_width'] = tf.constant([FLAGS.export_beam_width], name='metadata_beam_width')
-    outputs['metadata_alphabet'] = tf.constant([Config.alphabet.serialize()], name='metadata_alphabet')
+    outputs['metadata_alphabet'] = tf.constant([Config.alphabet.Serialize()], name='metadata_alphabet')
 
     if FLAGS.export_language:
         outputs['metadata_language'] = tf.constant([FLAGS.export_language.encode('utf-8')], name='metadata_language')

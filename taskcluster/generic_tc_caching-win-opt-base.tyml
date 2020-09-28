@@ -18,9 +18,8 @@ payload:
   mounts:
     - file: msys2-base-x86_64.tar.xz
       content:
-        sha256: c4443113497acb2d2e285d40b929fc55f33f8f669902595ecdf66a655b63dc60
-        url: >-
-          https://github.com/msys2/msys2-installer/releases/download/2020-05-17/msys2-base-x86_64-20200517.tar.xz
+        sha256: ${system.msys2.sha}
+        url: ${system.msys2.url}
 
   env:
     TC_MSYS_VERSION: 'MSYS_NT-6.3-9600'
@@ -32,16 +31,18 @@ payload:
       "C:\Program Files\7-zip\7z.exe" x -o%USERPROFILE% -ttar -aoa -si
     - .\msys64\usr\bin\bash.exe --login -cx "export THIS_BASH_PID=$$; ps -ef | grep '[?]' | awk '{print $2}' | grep -v $THIS_BASH_PID | xargs -r kill; exit 0"
     - .\msys64\usr\bin\bash.exe --login -cx "pacman -Syu --noconfirm"
-    - .\msys64\usr\bin\bash.exe --login -cx "pacman -Syu --noconfirm"
     - $let:
+        extraSystemSetup: { $eval: strip(str(build.system_setup)) }
+        extraSystemConfig: { $eval: strip(str(build.system_config)) }
         taskIndexExpire: { $fromNow: '6 months' }
       in: >
         echo .\msys64\usr\bin\bash.exe --login -cxe "export LC_ALL=C &&
         export PATH=\"$USERPROFILE/msys64/usr/bin:/c/Python36:/c/Program Files/Git/bin:/c/Program Files/7-Zip/:$PATH\" &&
         export TASKCLUSTER_ARTIFACTS=\"$(cygpath -u $USERPROFILE/public)\" &&
         export TASKCLUSTER_TASK_DIR=\"/c/builds/tc-workdir/\" &&
+        (rm -fr $TASKCLUSTER_TASK_DIR/ ; mkdir $TASKCLUSTER_TASK_DIR) &&
         echo \"export TASKCLUSTER_TASK_EXIT_CODE=0\" > $USERPROFILE/tc-exit.sh &&
-        env && pacman --noconfirm -R bsdtar && pacman --noconfirm -S tar && mkdir -p $TASKCLUSTER_ARTIFACTS/ && if [ \"`curl -sSIL -o /dev/null -w %%{http_code} ${build.cache.artifact_url}`\" != \"200\" ]; then git clone --quiet ${build.build_or_cache.repo} $TASKCLUSTER_TASK_DIR/${build.build_or_cache.dir}/ && cd $TASKCLUSTER_TASK_DIR/${build.build_or_cache.dir} && git checkout --quiet ${build.build_or_cache.sha} && $TASKCLUSTER_TASK_DIR/${build.build_or_cache.dir}/${build.scripts.build} && $TASKCLUSTER_TASK_DIR/${build.build_or_cache.dir}/${build.scripts.package} && $TASKCLUSTER_TASK_DIR/${build.build_or_cache.dir}/taskcluster/tc-update-index.sh ${taskIndexExpire} taskcluster ${build.cache.artifact_namespace}; fi; echo \"export TASKCLUSTER_TASK_EXIT_CODE=$?\" > $USERPROFILE/tc-exit.sh" | cmd /k
+        env && pacman --noconfirm -S tar && mkdir -p $TASKCLUSTER_ARTIFACTS/ && if [ \"`curl -sSIL -o /dev/null -w %%{http_code} ${build.cache.artifact_url}`\" != \"200\" ]; then git clone --quiet ${build.build_or_cache.repo} $TASKCLUSTER_TASK_DIR/${build.build_or_cache.dir}/ && cd $TASKCLUSTER_TASK_DIR/${build.build_or_cache.dir} && git checkout --quiet ${build.build_or_cache.sha} && ${extraSystemConfig} && $TASKCLUSTER_TASK_DIR/${build.build_or_cache.dir}/${build.scripts.setup} && $TASKCLUSTER_TASK_DIR/${build.build_or_cache.dir}/${build.scripts.build} && $TASKCLUSTER_TASK_DIR/${build.build_or_cache.dir}/${build.scripts.package} && $TASKCLUSTER_TASK_DIR/${build.build_or_cache.dir}/taskcluster/tc-update-index.sh ${taskIndexExpire} taskcluster ${build.cache.artifact_namespace}; fi; echo \"export TASKCLUSTER_TASK_EXIT_CODE=$?\" > $USERPROFILE/tc-exit.sh" | cmd /k
 
     - .\msys64\usr\bin\bash.exe --login -cxe "source $USERPROFILE/tc-exit.sh && exit $TASKCLUSTER_TASK_EXIT_CODE"
 

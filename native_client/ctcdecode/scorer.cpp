@@ -65,7 +65,7 @@ void Scorer::setup_char_map()
     // The initial state of FST is state 0, hence the index of chars in
     // the FST should start from 1 to avoid the conflict with the initial
     // state, otherwise wrong decoding results would be given.
-    char_map_[alphabet_.StringFromLabel(i)] = i + 1;
+    char_map_[alphabet_.DecodeSingle(i)] = i + 1;
   }
 }
 
@@ -261,64 +261,17 @@ double Scorer::get_log_cond_prob(const std::vector<std::string>::const_iterator&
   return cond_prob/NUM_FLT_LOGE;
 }
 
-double Scorer::get_sent_log_prob(const std::vector<std::string>& words)
-{
-  // For a given sentence (`words`), return sum of LM scores over windows on
-  // sentence. For example, given the sentence:
-  //
-  //    there once was an ugly barnacle
-  //
-  // And a language model with max_order_ = 3, this function will return the sum
-  // of the following scores:
-  //
-  //    there                  | <s>
-  //    there   once           | <s>
-  //    there   once     was
-  //    once    was      an
-  //    was     an       ugly
-  //    an      ugly     barnacle
-  //    ugly    barnacle </s>
-  //
-  // This is used in the decoding process to compute the LM contribution for a
-  // given beam's accumulated score, so that it can be removed and only the
-  // acoustic model contribution can be returned as a confidence score for the
-  // transcription. See DecoderState::decode.
-  const int sent_len = words.size();
-
-  double score = 0.0;
-  for (int win_start = 0, win_end = 1; win_end <= sent_len+1; ++win_end) {
-    const int win_size = win_end - win_start;
-    bool bos = win_size < max_order_;
-    bool eos = win_end == (sent_len + 1);
-
-    // The last window goes one past the end of the words vector as passing the
-    // EOS=true flag counts towards the length of the scored sentence, so we
-    // adjust the win_end index here to not go over bounds.
-    score += get_log_cond_prob(words.begin() + win_start,
-                               words.begin() + (eos ? win_end - 1 : win_end),
-                               bos,
-                               eos);
-
-    // Only increment window start position after we have a full window
-    if (win_size == max_order_) {
-      win_start++;
-    }
-  }
-
-  return score / NUM_FLT_LOGE;
-}
-
 void Scorer::reset_params(float alpha, float beta)
 {
   this->alpha = alpha;
   this->beta = beta;
 }
 
-std::vector<std::string> Scorer::split_labels_into_scored_units(const std::vector<int>& labels)
+std::vector<std::string> Scorer::split_labels_into_scored_units(const std::vector<unsigned int>& labels)
 {
   if (labels.empty()) return {};
 
-  std::string s = alphabet_.LabelsToString(labels);
+  std::string s = alphabet_.Decode(labels);
   std::vector<std::string> words;
   if (is_utf8_mode_) {
     words = split_into_codepoints(s);
@@ -339,25 +292,24 @@ std::vector<std::string> Scorer::make_ngram(PathTrie* prefix)
       break;
     }
 
-    std::vector<int> prefix_vec;
-    std::vector<int> prefix_steps;
+    std::vector<unsigned int> prefix_vec;
 
     if (is_utf8_mode_) {
-      new_node = current_node->get_prev_grapheme(prefix_vec, prefix_steps, alphabet_);
+      new_node = current_node->get_prev_grapheme(prefix_vec, alphabet_);
     } else {
-      new_node = current_node->get_prev_word(prefix_vec, prefix_steps, alphabet_);
+      new_node = current_node->get_prev_word(prefix_vec, alphabet_);
     }
     current_node = new_node->parent;
 
     // reconstruct word
-    std::string word = alphabet_.LabelsToString(prefix_vec);
+    std::string word = alphabet_.Decode(prefix_vec);
     ngram.push_back(word);
   }
   std::reverse(ngram.begin(), ngram.end());
   return ngram;
 }
 
-void Scorer::fill_dictionary(const std::vector<std::string>& vocabulary)
+void Scorer::fill_dictionary(const std::unordered_set<std::string>& vocabulary)
 {
   // ConstFst is immutable, so we need to use a MutableFst to create the trie,
   // and then we convert to a ConstFst for the decoder and for storing on disk.

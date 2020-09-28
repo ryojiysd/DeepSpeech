@@ -34,3 +34,7 @@
 /doc/xml-java/
 Dockerfile.build
 Dockerfile.train
+doc/xml-c
+doc/xml-java
+doc/xml-dotnet
+convert_graphdef_memmapped_format

@@ -1,7 +1,7 @@
 # Please refer to the USING documentation, "Dockerfile for building from source"
 
 # Need devel version cause we need /usr/include/cudnn.h 
-FROM nvidia/cuda:10.0-cudnn7-devel-ubuntu18.04
+FROM nvidia/cuda:10.1-cudnn7-devel-ubuntu18.04
 
 ENV DEEPSPEECH_REPO=#DEEPSPEECH_REPO#
 ENV DEEPSPEECH_SHA=#DEEPSPEECH_SHA#
@@ -19,7 +19,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         g++ \
         gcc \
         git \
-        git-lfs \
         libbz2-dev \
         libboost-all-dev \
         libgsm1-dev \
@@ -46,25 +45,26 @@ RUN update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1
 
 # Install Bazel
-RUN curl -LO "https://github.com/bazelbuild/bazel/releases/download/0.24.1/bazel_0.24.1-linux-x86_64.deb"
+RUN curl -LO "https://github.com/bazelbuild/bazel/releases/download/3.1.0/bazel_3.1.0-linux-x86_64.deb"
 RUN dpkg -i bazel_*.deb
+
+# Try and free some space
+RUN rm -rf /var/lib/apt/lists/*
 
 # << END Install base software
 
 # >> START Configure Tensorflow Build
 
-# Clone TensorFlow from Mozilla repo
-RUN git clone https://github.com/mozilla/tensorflow/
-WORKDIR /tensorflow
-RUN git checkout r1.15
-
 # GPU Environment Setup
+ENV TF_NEED_ROCM 0
+ENV TF_NEED_OPENCL_SYCL 0
+ENV TF_NEED_OPENCL 0
 ENV TF_NEED_CUDA 1
-ENV TF_CUDA_PATHS "/usr,/usr/local/cuda,/usr/lib/x86_64-linux-gnu/"
-ENV TF_CUDA_VERSION 10.0
+ENV TF_CUDA_PATHS "/usr,/usr/local/cuda-10.1,/usr/lib/x86_64-linux-gnu/"
+ENV TF_CUDA_VERSION 10.1
 ENV TF_CUDNN_VERSION 7.6
 ENV TF_CUDA_COMPUTE_CAPABILITIES 6.0
-ENV TF_NCCL_VERSION 2.4
+ENV TF_NCCL_VERSION 2.7
 
 # Common Environment Setup
 ENV TF_BUILD_CONTAINER_TYPE GPU
@@ -94,7 +94,7 @@ ENV TF_NEED_VERBS 0
 ENV TF_NEED_OPENCL_SYCL 0
 
 ENV PYTHON_BIN_PATH /usr/bin/python3.6
-ENV PYTHON_LIB_PATH /usr/lib/python3.6/dist-packages
+ENV PYTHON_LIB_PATH /usr/local/lib/python3.6/dist-packages
 
 # << END Configure Tensorflow Build
 
@@ -113,16 +113,15 @@ RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
 
 WORKDIR /
 
-RUN git clone $DEEPSPEECH_REPO
+RUN git clone --recursive $DEEPSPEECH_REPO DeepSpeech
 WORKDIR /DeepSpeech
 RUN git checkout $DEEPSPEECH_SHA
-
-# Link DeepSpeech native_client libs to tf folder
-RUN ln -s /DeepSpeech/native_client /tensorflow
+RUN git submodule sync tensorflow/
+RUN git submodule update --init tensorflow/
 
 # >> START Build and bind
 
-WORKDIR /tensorflow
+WORKDIR /DeepSpeech/tensorflow
 
 # Fix for not found script https://github.com/tensorflow/tensorflow/issues/471
 RUN ./configure
@@ -155,10 +154,10 @@ RUN bazel build \
 	--action_env=LD_LIBRARY_PATH=${LD_LIBRARY_PATH}
 
 # Copy built libs to /DeepSpeech/native_client
-RUN cp /tensorflow/bazel-bin/native_client/libdeepspeech.so /DeepSpeech/native_client/
+RUN cp bazel-bin/native_client/libdeepspeech.so /DeepSpeech/native_client/
 
 # Build client.cc and install Python client and decoder bindings
-ENV TFDIR /tensorflow
+ENV TFDIR /DeepSpeech/tensorflow
 
 RUN nproc
 

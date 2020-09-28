@@ -1,3 +1,5 @@
+.. _c-usage:
+
 C API
 =====
 
@@ -18,6 +20,15 @@ See also the list of error codes including descriptions for each error in :ref:`
    :project: deepspeech-c
 
 .. doxygenfunction:: DS_DisableExternalScorer
+   :project: deepspeech-c
+
+.. doxygenfunction:: DS_AddHotWord
+   :project: deepspeech-c
+
+.. doxygenfunction:: DS_EraseHotWord
+   :project: deepspeech-c
+
+.. doxygenfunction:: DS_ClearHotWords
    :project: deepspeech-c
 
 .. doxygenfunction:: DS_SetScorerAlphaBeta

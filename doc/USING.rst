@@ -5,7 +5,7 @@ Using a Pre-trained Model
 
 Inference using a DeepSpeech pre-trained model can be done with a client/language binding package. We have four clients/language bindings in this repository, listed below, and also a few community-maintained clients/language bindings in other repositories, listed `further down in this README <#third-party-bindings>`_.
 
-* `The C API <c-usage>`.
+* :ref:`The C API <c-usage>`.
 * :ref:`The Python package/language binding <py-usage>`
 * :ref:`The Node.JS package/language binding <nodejs-usage>`
 * :ref:`The command-line client <cli-usage>`
@@ -28,7 +28,7 @@ Please refer to your system's documentation on how to install these dependencies
 CUDA dependency
 ^^^^^^^^^^^^^^^
 
-The GPU capable builds (Python, NodeJS, C++, etc) depend on the same CUDA runtime as upstream TensorFlow. Currently with TensorFlow 1.15 it depends on CUDA 10.0 and CuDNN v7.6. `See the TensorFlow documentation <https://www.tensorflow.org/install/gpu>`_.
+The GPU capable builds (Python, NodeJS, C++, etc) depend on CUDA 10.1 and CuDNN v7.6.
 
 Getting the pre-trained model
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -39,6 +39,29 @@ If you want to use the pre-trained English model for performing speech-to-text, 
 
    wget https://github.com/mozilla/DeepSpeech/releases/download/v0.7.4/deepspeech-0.7.4-models.pbmm
    wget https://github.com/mozilla/DeepSpeech/releases/download/v0.7.4/deepspeech-0.7.4-models.scorer
+
+There are several pre-trained model files available in official releases. Files ending in ``.pbmm`` are compatible with clients and language bindings built against the standard TensorFlow runtime. Usually these packages are simply called ``deepspeech``. These files are also compatible with CUDA enabled clients and language bindings. These packages are usually called ``deepspeech-gpu``. Files ending in ``.tflite`` are compatible with clients and language bindings built against the `TensorFlow Lite runtime <https://www.tensorflow.org/lite/>`_. These models are optimized for size and performance in low power devices. On desktop platforms, the compatible packages are called ``deepspeech-tflite``. On Android and Raspberry Pi, we only publish TensorFlow Lite enabled packages, and they are simply called ``deepspeech``. You can see a full list of supported platforms and which TensorFlow runtime is supported at :ref:`supported-platforms-inference`.
+
++--------------------+---------------------+---------------------+
+| Package/Model type | .pbmm               | .tflite             |
++====================+=====================+=====================+
+| deepspeech         | Depends on platform | Depends on platform |
++--------------------+---------------------+---------------------+
+| deepspeech-gpu     | ✅                  | ❌                  |
++--------------------+---------------------+---------------------+
+| deepspeech-tflite  | ❌                  | ✅                  |
++--------------------+---------------------+---------------------+
+
+Finally, the pre-trained model files also include files ending in ``.scorer``. These are external scorers (language models) that are used at inference time in conjunction with an acoustic model (``.pbmm`` or ``.tflite`` file) to produce transcriptions. We also provide further documentation on :ref:`the decoding process <decoder-docs>` and :ref:`how scorers are generated <scorer-scripts>`.
+
+Important considerations on model inputs
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The release notes include detailed information on how the released models were trained/constructed. Important considerations for users include the characteristics of the training data used and whether they match your intended use case. For acoustic models, an important characteristic is the demographic distribution of speakers. For external scorers, the texts should be similar to those of the expected use case. If the data used for training the models does not align with your intended use case, it may be necessary to adapt or train new models in order to get good accuracy in your transcription results.
+
+The process for training an acoustic model is described in :ref:`training-docs`. In particular, fine tuning a release model using your own data can be a good way to leverage relatively smaller amounts of data that would not be sufficient for training a new model from scratch. See the :ref:`fine tuning and transfer learning sections <training-fine-tuning>` for more information. :ref:`Data augmentation <training-data-augmentation>` can also be a good way to increase the value of smaller training sets.
+
+Creating your own external scorer from text data is another way that you can adapt the model to your specific needs. The process and tools used to generate an external scorer package are described in :ref:`scorer-scripts` and an overview of how the external scorer is used by DeepSpeech to perform inference is available in :ref:`decoder-docs`. Generating a smaller scorer from a single purpose text dataset is a quick process and can bring significant accuracy improvements, specially for more constrained, limited vocabulary applications.
 
 Model compatibility
 ^^^^^^^^^^^^^^^^^^^

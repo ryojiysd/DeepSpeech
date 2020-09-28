@@ -71,8 +71,14 @@ def create_flags():
     # Sample limits
 
     f.DEFINE_integer('limit_train', 0, 'maximum number of elements to use from train set - 0 means no limit')
-    f.DEFINE_integer('limit_dev', 0, 'maximum number of elements to use from validation set- 0 means no limit')
-    f.DEFINE_integer('limit_test', 0, 'maximum number of elements to use from test set- 0 means no limit')
+    f.DEFINE_integer('limit_dev', 0, 'maximum number of elements to use from validation set - 0 means no limit')
+    f.DEFINE_integer('limit_test', 0, 'maximum number of elements to use from test set - 0 means no limit')
+
+    # Sample order
+
+    f.DEFINE_boolean('reverse_train', False, 'if to reverse sample order of the train set')
+    f.DEFINE_boolean('reverse_dev', False, 'if to reverse sample order of the dev set')
+    f.DEFINE_boolean('reverse_test', False, 'if to reverse sample order of the test set')
 
     # Checkpointing
 
@@ -129,6 +135,7 @@ def create_flags():
     # Geometry
 
     f.DEFINE_integer('n_hidden', 2048, 'layer width to use when initialising layers')
+    f.DEFINE_boolean('layer_norm', False, 'wether to use layer-normalization after each fully-connected layer (except the last one)')
 
     # Initialization
 
@@ -151,7 +158,7 @@ def create_flags():
 
     f.DEFINE_boolean('utf8', False, 'enable UTF-8 mode. When this is used the model outputs UTF-8 sequences directly rather than using an alphabet mapping.')
     f.DEFINE_string('alphabet_config_path', 'data/alphabet.txt', 'path to the configuration file specifying the alphabet used by the network. See the comment in data/alphabet.txt for a description of the format.')
-    f.DEFINE_string('scorer_path', 'data/lm/kenlm.scorer', 'path to the external scorer file created with data/lm/generate_package.py')
+    f.DEFINE_string('scorer_path', '', 'path to the external scorer file.')
     f.DEFINE_alias('scorer', 'scorer_path')
     f.DEFINE_integer('beam_width', 1024, 'beam width used in the CTC decoder when building candidate transcriptions')
     f.DEFINE_float('lm_alpha', 0.931289039105002, 'the alpha hyperparameter of the CTC decoder. Language Model weight.')
